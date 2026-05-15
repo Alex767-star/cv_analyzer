@@ -21,11 +21,14 @@ def main():
     if not os.path.exists(data_path):
         logger.error(f"Файл с данными не найден: {data_path}")
         logger.info("Генерирую синтетические данные...")
-        from data.generate_samples import generate_training_data
-        generate_training_data(5000)
+        from data.collect_real import generate_semi_realistic_data
+        df = generate_semi_realistic_data(5000)
+    else:
+        logger.info("Загрузка данных...")
+        df = pd.read_csv(data_path)
     
-    logger.info("Загрузка данных...")
-    df = pd.read_csv(data_path)
+    logger.info(f"Размер датасета: {len(df)} записей")
+    logger.info(f"Распределение классов:\n{df['level'].value_counts()}")
     
     df['cleaned_text'] = df['text']
     
@@ -42,29 +45,32 @@ def main():
     X_train_features = extractor.fit_transform(X_train)
     X_test_features = extractor.transform(X_test)
     
+    logger.info(f"Размерность признаков: {X_train_features.shape}")
+    
     logger.info("Обучение моделей...")
     trainer = ModelTrainer()
     
     lr_metrics = trainer.train_logistic_regression(
         X_train_features, y_train, X_test_features, y_test
     )
-    logger.info(f"Logistic Regression F1: {lr_metrics['f1_score']:.3f}")
+    logger.info(f"Logistic Regression - F1: {lr_metrics['f1_score']:.3f}, ROC-AUC: {lr_metrics['roc_auc']:.3f}")
     
     cb_metrics = trainer.train_catboost(
         X_train_features, y_train, X_test_features, y_test
     )
-    logger.info(f"CatBoost F1: {cb_metrics['f1_score']:.3f}")
+    logger.info(f"CatBoost - F1: {cb_metrics['f1_score']:.3f}, ROC-AUC: {cb_metrics['roc_auc']:.3f}")
     
     models_path = os.path.join(os.path.dirname(__file__), '../models')
     os.makedirs(models_path, exist_ok=True)
     
     trainer.save_models(models_path)
-    
     joblib.dump(extractor.tfidf, os.path.join(models_path, 'tfidf_vectorizer.joblib'))
     joblib.dump(le, os.path.join(models_path, 'level_encoder.joblib'))
     
     logger.info(f"Модели сохранены в {models_path}/")
-    logger.info("Запустите демо: streamlit run src/api/app.py")
+    logger.info("\nЗапуск демо: streamlit run src/api/app.py")
+    logger.info("Запуск API: uvicorn src.api.fastapi_app:app --reload")
+    logger.info("Запуск тестов: python -m pytest tests/ -v")
 
 if __name__ == "__main__":
     main()
